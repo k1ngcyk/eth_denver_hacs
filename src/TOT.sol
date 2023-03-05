@@ -5,51 +5,67 @@
 
 pragma solidity ^0.8.0;
 
-// import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Royalty.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Royalty.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
-contract TOT is ERC721Enumerable, Ownable {
+contract TOT is ERC721Enumerable, ERC721Royalty, Ownable {
     using Strings for uint256;
 
     string baseURI;
     uint256 public cost = 0.5 ether;
     uint256 public maxSupply = 1000;
-    uint256 public maxMintAmount = 10;
-    uint256 public amountMinted;
-    uint256 public maxUserMintAmount = 20;
-    mapping(address => uint256) public userMintedAmount;
+    mapping(address => bool) public userMinted;
     bool public paused = false;
 
     constructor(string memory _initBaseURI) ERC721("2 OF 20", "TOT") {
         setBaseURI(_initBaseURI);
-        // _setDefaultRoyalty(msg.sender, 500);
+        _setDefaultRoyalty(msg.sender, 500);
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize)
+        internal
+        override(ERC721, ERC721Enumerable)
+    {
+        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+    }
+
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721Royalty) {
+        super._burn(tokenId);
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721Enumerable, ERC721Royalty)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
     }
 
     function _baseURI() internal view virtual override returns (string memory) {
         return baseURI;
     }
 
-    function mint(uint256 _mintAmount) public payable {
+    function mint(address to) public payable returns (uint256 tokenId) {
         uint256 supply = totalSupply();
         require(!paused, "Sale is not active");
-        require(_mintAmount > 0, "Must mint at least 1 TOT");
-        require(_mintAmount <= maxMintAmount, "No more than 10 POF in a tx");
-        require(supply + _mintAmount <= maxSupply, "Max mint supply reached");
+        require(supply < maxSupply, "Max mint supply reached");
 
         if (msg.sender != owner()) {
             require(
-                userMintedAmount[msg.sender] + _mintAmount <= maxUserMintAmount,
+                !userMinted[to],
                 "Over mint limit"
             );
-            require(msg.value >= cost * _mintAmount, "Not enough value sent");
+            require(msg.value >= cost, "Not enough value sent");
         }
 
-        amountMinted += _mintAmount;
-        userMintedAmount[msg.sender] += _mintAmount;
-        _safeMint(msg.sender, _mintAmount);
+        uint256 newItemId = totalSupply() + 1;
+        userMinted[to] = true;
+        _safeMint(to, newItemId);
+        return newItemId;
     }
 
     function tokenURI(uint256 tokenId)
@@ -73,10 +89,6 @@ contract TOT is ERC721Enumerable, Ownable {
 
     function setCost(uint256 _newCost) public onlyOwner {
         cost = _newCost;
-    }
-
-    function setmaxMintAmount(uint256 _newmaxMintAmount) public onlyOwner {
-        maxMintAmount = _newmaxMintAmount;
     }
 
     function setBaseURI(string memory _newBaseURI) public onlyOwner {
